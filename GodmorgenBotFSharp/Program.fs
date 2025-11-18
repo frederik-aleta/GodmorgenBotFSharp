@@ -13,36 +13,33 @@ open NetCord.Hosting.Services.ApplicationCommands
 let builder =
     Host
         .CreateDefaultBuilder()
-        .ConfigureAppConfiguration(fun context config -> config.AddJsonFile ("local.settings.json", optional = false, reloadOnChange = true) |> ignore)
+        .ConfigureAppConfiguration(fun context config -> //
+            config.AddJsonFile ("local.settings.json", optional = false, reloadOnChange = true)
+            |> ignore
+        )
         .ConfigureServices (fun hostBuilderContext serviceCollection ->
-            serviceCollection.AddLogging() |> ignore
-            serviceCollection.AddHostedService<BackgroundTaskTest.BackgroundWorker>() |> ignore
+            serviceCollection.AddLogging () |> ignore
+            serviceCollection.AddHostedService<BackgroundTaskTest.BackgroundWorker> () |> ignore
             serviceCollection.AddDiscordGateway () |> ignore
+            serviceCollection.AddApplicationCommands () |> ignore
         )
 
 let host = builder.Build ()
-
 let gatewayClient = host.Services.GetRequiredService<GatewayClient> ()
-let loggerFactory = host.Services.GetRequiredService<ILoggerFactory>()
-let logger = loggerFactory.CreateLogger("GodmorgenBot")
-let configuration = host.Services.GetRequiredService<IConfiguration>()
-let mongoConnectionString = configuration.GetConnectionString("MongoDb")
+let loggerFactory = host.Services.GetRequiredService<ILoggerFactory> ()
+let configuration = host.Services.GetRequiredService<IConfiguration> ()
+let mongoConnectionString = configuration.GetConnectionString "MongoDb"
 
-let mongoClient = new MongoClient(mongoConnectionString)
-let database = mongoClient.GetDatabase("godmorgen")
+let ctx = {
+    MongoDataBase = MongoDb.create mongoConnectionString
+    Logger = loggerFactory.CreateLogger "GodmorgenBot"
+}
 
-gatewayClient.add_MessageCreate (fun message ->
-    task {
-        if message.Author.IsBot then
-            return ()
-        else
-            let! _ = message.ReplyAsync $"Hello, {message.Author.Username}!"
-            return ()
-    } |> ValueTask
-)
+gatewayClient.add_MessageCreate (MessageHandler.messageCreate ctx)
 
 type Delegate = delegate of User -> string
 let delegateFunc = Delegate (fun user -> $"Pong! <@{user.Id}>")
-host.AddSlashCommand("ping", "Replies with Pong!", delegateFunc) |> ignore
+host.AddSlashCommand ("ping", "Replies with Pong!", SlashCommands.pingCommand) |> ignore
+host.AddSlashCommand ("ping", "Replies with Pong!", SlashCommands.leaderboardCommand) |> ignore
 
 host.RunAsync () |> Async.AwaitTask |> Async.RunSynchronously
