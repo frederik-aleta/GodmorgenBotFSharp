@@ -37,7 +37,7 @@ let findAndDisgraceHeretics
     =
     async {
         logger.LogInformation "Clock is within godmorgen interval, triggering heresy check"
-        let! hereticUserIds = mongoDb |> MongoDb.Types.getHereticUserIds
+        let! hereticUserIds = mongoDb |> MongoDb.Functions.getHereticUserIds |> Async.AwaitTask
 
         if hereticUserIds.Length = 0 then
             logger.LogInformation "No heretics found."

@@ -1,10 +1,8 @@
-﻿open System.Threading.Tasks
-open GodmorgenBotFSharp
+﻿open GodmorgenBotFSharp
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
-open MongoDB.Driver
 open NetCord
 open NetCord.Gateway
 open NetCord.Hosting.Gateway
@@ -24,7 +22,7 @@ let builder =
 
             let config = hostBuilderContext.Configuration
             let mongoConnectionString = config.GetConnectionString "MongoDb"
-            let mongoDb = MongoDb.Types.create mongoConnectionString
+            let mongoDb = MongoDb.Functions.create mongoConnectionString
 
             serviceCollection.AddHostedService<BackgroundJob.HereticBackgroundJob> (fun x ->
                 let loggerFactory = x.GetRequiredService<ILoggerFactory> ()
@@ -47,7 +45,7 @@ let configuration = host.Services.GetRequiredService<IConfiguration> ()
 let mongoConnectionString = configuration.GetConnectionString "MongoDb"
 
 let ctx = {
-    MongoDataBase = MongoDb.Types.create mongoConnectionString
+    MongoDataBase = MongoDb.Functions.create mongoConnectionString
     Logger = loggerFactory.CreateLogger "GodmorgenBot"
 }
 
@@ -55,12 +53,46 @@ gatewayClient.add_MessageCreate (MessageHandler.messageCreate ctx)
 
 type Delegate = delegate of User -> string
 let delegateFunc = Delegate (fun user -> $"Pong! <@{user.Id}>")
-host.AddSlashCommand ("ping", "Replies with Pong!", SlashCommands.pingCommand) |> ignore
 
 host.AddSlashCommand (
     "leaderboard",
     "This command shows the current leaderboard status",
     SlashCommands.leaderboardCommand ctx
+)
+|> ignore
+
+host.AddSlashCommand (
+    "wordcount",
+    "This command shows how many times the the supplied word has been used by a user.",
+    SlashCommands.wordCountCommand ctx
+)
+|> ignore
+
+host.AddSlashCommand (
+    "giveuserpoint",
+    "This command gives a user a point, if Træmand deems they deserve it.",
+    SlashCommands.giveUserPointCommand ctx
+)
+|> ignore
+
+host.AddSlashCommand (
+    "giveuserpointwithwords",
+    "This command gives a user a point, if Træmand deems they deserve it.",
+    SlashCommands.giveUserPointWithWordsCommand ctx
+)
+|> ignore
+
+host.AddSlashCommand (
+    "topwords",
+    "This command shows top 5 words for a given user",
+    SlashCommands.topWordsCommand ctx
+)
+|> ignore
+
+host.AddSlashCommand (
+    "alltimeleaderboard",
+    "This command shows the all time leaderboard, and stats for the last 3 months.",
+    SlashCommands.allTimeLeaderboardCommand ctx
 )
 |> ignore
 

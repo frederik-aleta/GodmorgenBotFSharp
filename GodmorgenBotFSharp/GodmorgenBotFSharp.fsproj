@@ -6,8 +6,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Constants.fs" />
         <Compile Include="Context.fs" />
         <Compile Include="MongoDb\Types.fs" />
+        <Compile Include="MongoDb\Functions.fs" />
+        <Compile Include="Leaderboard.fs" />
         <Compile Include="SlashCommands.fs" />
         <Compile Include="MessageHandler.fs" />
         <Compile Include="BackgroundJob.fs" />
@@ -21,6 +24,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="FsToolkit.ErrorHandling" Version="5.1.0" />
       <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
       <PackageReference Include="MongoDB.Driver" Version="3.5.0" />
       <PackageReference Include="NetCord" Version="1.0.0-alpha.448" />
