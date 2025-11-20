@@ -64,7 +64,7 @@ let callbackFunction
         let dateTime = DateTime.UtcNow
 
         if dateTime |> isWeekend || dateTime |> isEndOfGodMorgenHoursAt |> not then
-            logger.LogInformation "Not within godmorgen hours or it's weekend, skipping heresy check."
+            ()
         else
             do! findAndDisgraceHeretics gatewayClient discordChannelInfo mongoDb logger
     }

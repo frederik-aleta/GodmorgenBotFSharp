@@ -8,7 +8,7 @@ let messageCreate (ctx : Context) (message : Message) : ValueTask =
         if message.Author.IsBot then
             return ()
         else
-            let! _ = message.ReplyAsync $"Hello, {message.Author.Username}!"
+            // let! _ = message.ReplyAsync $"Hello, {message.Author.Username}!"
             return ()
     }
     |> ValueTask

@@ -89,11 +89,11 @@ host.AddSlashCommand (
 )
 |> ignore
 
-host.AddSlashCommand (
-    "alltimeleaderboard",
-    "This command shows the all time leaderboard, and stats for the last 3 months.",
-    SlashCommands.allTimeLeaderboardCommand ctx
-)
-|> ignore
+// host.AddSlashCommand (
+//     "alltimeleaderboard",
+//     "This command shows the all time leaderboard, and stats for the last 3 months.",
+//     SlashCommands.allTimeLeaderboardCommand ctx
+// )
+// |> ignore
 
 host.RunAsync () |> Async.AwaitTask |> Async.RunSynchronously
