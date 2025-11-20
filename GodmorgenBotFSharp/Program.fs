@@ -3,41 +3,46 @@ open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
-open NetCord
 open NetCord.Gateway
 open NetCord.Hosting.Gateway
 open NetCord.Hosting.Services.ApplicationCommands
 
+let createContext (config : IConfiguration) (loggerFactory : ILoggerFactory) =
+    let mongoConnectionString = config.GetConnectionString "MongoDb"
+
+    {
+        MongoDataBase = MongoDb.Functions.create mongoConnectionString
+        Logger = loggerFactory.CreateLogger "GodmorgenBot"
+        DiscordChannelInfo = {
+            ChannelId = config.GetValue<uint64> "ChannelId"
+            GuildId = config.GetValue<uint64> "GuildId"
+        }
+    }
+
+let configureServices (hostBuilderContext : HostBuilderContext) (serviceCollection : IServiceCollection) =
+    serviceCollection.AddLogging () |> ignore
+    serviceCollection.AddDiscordGateway () |> ignore
+    serviceCollection.AddApplicationCommands () |> ignore
+
+    serviceCollection.AddHostedService<BackgroundJob.HereticBackgroundJob> (fun x ->
+        let loggerFactory = x.GetRequiredService<ILoggerFactory> ()
+        let gatewayClient = x.GetRequiredService<GatewayClient> ()
+        let configuration = x.GetRequiredService<IConfiguration> ()
+        let ctx = createContext configuration loggerFactory
+        let logger = loggerFactory.CreateLogger<BackgroundJob.HereticBackgroundJob> ()
+
+        new BackgroundJob.HereticBackgroundJob (gatewayClient, ctx.DiscordChannelInfo, ctx.MongoDataBase, logger)
+    )
+    |> ignore
+
 let builder =
     Host
         .CreateDefaultBuilder()
-        .ConfigureAppConfiguration(fun context config -> //
+        .ConfigureAppConfiguration(fun _ config ->
             config.AddJsonFile ("local.settings.json", optional = false, reloadOnChange = true) |> ignore
         )
-        .ConfigureServices (fun hostBuilderContext serviceCollection ->
-            serviceCollection.AddLogging () |> ignore
-            serviceCollection.AddDiscordGateway () |> ignore
-            serviceCollection.AddApplicationCommands () |> ignore
-
-            let config = hostBuilderContext.Configuration
-            let mongoConnectionString = config.GetConnectionString "MongoDb"
-            let mongoDb = MongoDb.Functions.create mongoConnectionString
-
-            serviceCollection.AddHostedService<BackgroundJob.HereticBackgroundJob> (fun x ->
-                let loggerFactory = x.GetRequiredService<ILoggerFactory> ()
-                let gatewayClient = x.GetRequiredService<GatewayClient> ()
-                let configuration = x.GetRequiredService<IConfiguration> ()
-
-                let discordChannelInfo = {
-                    ChannelId = configuration.GetValue<uint64> "ChannelId"
-                    GuildId = configuration.GetValue<uint64> "GuildId"
-                }
-
-                let logger = loggerFactory.CreateLogger<BackgroundJob.HereticBackgroundJob> ()
-                new BackgroundJob.HereticBackgroundJob (gatewayClient, discordChannelInfo, mongoDb, logger)
-            )
-            |> ignore
-        )
+        .ConfigureServices
+        configureServices
 
 let host = builder.Build ()
 let gatewayClient = host.Services.GetRequiredService<GatewayClient> ()
@@ -45,14 +50,7 @@ let loggerFactory = host.Services.GetRequiredService<ILoggerFactory> ()
 let configuration = host.Services.GetRequiredService<IConfiguration> ()
 let mongoConnectionString = configuration.GetConnectionString "MongoDb"
 
-let ctx = {
-    MongoDataBase = MongoDb.Functions.create mongoConnectionString
-    Logger = loggerFactory.CreateLogger "GodmorgenBot"
-    DiscordChannelInfo = {
-        ChannelId = configuration.GetValue<uint64> "ChannelId"
-        GuildId = configuration.GetValue<uint64> "GuildId"
-    }
-}
+let ctx = createContext configuration loggerFactory
 
 gatewayClient.add_MessageCreate (MessageHandler.messageCreate ctx)
 
