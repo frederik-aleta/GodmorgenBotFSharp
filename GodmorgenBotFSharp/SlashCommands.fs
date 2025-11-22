@@ -13,6 +13,7 @@ let leaderboardCommand (ctx : Context) =
     LeaderboardDelegate (fun _ ->
         task {
             try
+                ctx.Logger.LogInformation ("Got leaderboard command request")
                 let today = DateTime.UtcNow.Date
                 let targetMonth = today.Month
                 let targetYear = today.Year
@@ -20,12 +21,16 @@ let leaderboardCommand (ctx : Context) =
                 let filter =
                     Builders<GodmorgenStats>.Filter
                         .And (
-                            Builders<GodmorgenStats>.Filter.Eq ((fun x -> x.Year), targetYear),
-                            Builders<GodmorgenStats>.Filter.Eq ((fun x -> x.Month), targetMonth)
+                            Builders<GodmorgenStats>.Filter.Eq (_.Year, targetYear),
+                            Builders<GodmorgenStats>.Filter.Eq (_.Month, targetMonth)
                         )
 
-                let! stats = MongoDb.Functions.getGodmorgenStats filter ctx.MongoDataBase
-                return Leaderboard.getCurrentMonthLeaderboard stats
+                let! statsO = MongoDb.Functions.getGodmorgenStats filter ctx.MongoDataBase
+
+                return
+                    match statsO with
+                    | None -> "No one has said godmorgen yet this month."
+                    | Some stats -> Leaderboard.getCurrentMonthLeaderboard stats
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GetCurrentMonthLeaderboard.")
                 return "An error occurred while processing your request."
@@ -40,11 +45,14 @@ let wordCountCommand (ctx : Context) =
             try
                 ctx.Logger.LogInformation ("Got wordcount command request for {User}", user.Username)
 
-                let! wordCounts = ctx.MongoDataBase |> MongoDb.Functions.getWordCount user gWord mWord
+                let! wordCountsO = ctx.MongoDataBase |> MongoDb.Functions.getWordCount user gWord mWord
 
                 return
-                    $"The user <@{user.Id}> has used the word {gWord} {wordCounts.gWordCount} times "
-                    + $"and the word {mWord} {wordCounts.mWordCount} times."
+                    match wordCountsO with
+                    | None -> $"No word counts found for user <@{user.Id}>."
+                    | Some wordCounts ->
+                        $"The user <@{user.Id}> has used the word {gWord} {wordCounts.gWordCount} times "
+                        + $"and the word {mWord} {wordCounts.mWordCount} times."
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GetWordCount for user {User}.", user.Username)
                 return "An error occurred while processing your request."
@@ -56,16 +64,21 @@ type GiveUserPointWithWordsDelegate = delegate of NetCord.User * gWord : string 
 let giveUserPointWithWordsCommand (ctx : Context) =
     GiveUserPointWithWordsDelegate (fun user gWord mWord ->
         task {
+            ctx.Logger.LogInformation("Got giveuserpointwithwords command request for {User}", user.Username)
             try
                 if user.Id <> Constants.PuffyDiscordUserId then
                     return "You are not allowed to use this command, Heretic!"
                 else
-                    let! result = ctx.MongoDataBase |> MongoDb.Functions.giveUserPoint user
-                    do! ctx.MongoDataBase |> MongoDb.Functions.updateWordCount user gWord mWord
+                    let! giveUserPointResult = ctx.MongoDataBase |> MongoDb.Functions.giveUserPoint user
+                    let! updateWordCountR = ctx.MongoDataBase |> MongoDb.Functions.updateWordCount user gWord mWord
 
-                    return
-                        $"User <@{user.Id}> has been given a point from {result.Previous} to {result.Current} points!, "
+                    match updateWordCountR with
+                    | Ok resultValue ->
+                        return $"User <@{user.Id}> has been given a point from {giveUserPointResult.Previous} to {giveUserPointResult.Current} points!, "
                         + $"and added words: G-word: {gWord}, M-word: {mWord}"
+                    | Error errorValue ->
+                        ctx.Logger.LogError("Failed to update word count for user {User} with error: {Error}", user.Username, errorValue)
+                        return errorValue
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GiveUserPointWithWords for user {User}.", user.Username)
                 return "An error occurred while processing your request."
@@ -77,6 +90,7 @@ type GiveUserPointDelegate = delegate of NetCord.User -> Task<string>
 let giveUserPointCommand (ctx : Context) =
     GiveUserPointDelegate (fun user ->
         task {
+            ctx.Logger.LogInformation("Got giveuserpoint command request for {User}", user.Username)
             try
                 if user.Id <> Constants.PuffyDiscordUserId then
                     return "You are not allowed to use this command, Heretic!"
@@ -98,17 +112,18 @@ let topWordsCommand (ctx : Context) =
         task {
             try
                 ctx.Logger.LogInformation ("Got topwords command request for {User}", user.Username)
-                let! top5Words = ctx.MongoDataBase |> MongoDb.Functions.getTop5Words user
+                let! top5WordsO = ctx.MongoDataBase |> MongoDb.Functions.getTop5Words user
 
-                if Array.isEmpty top5Words then
-                    return "No words found for the user."
-                else
-                    let top5WordsStringFormat =
-                        top5Words |> Array.mapi (fun i wordCount -> $"{i + 1}: {wordCount.Word} - {wordCount.Count}")
+                return
+                    match top5WordsO with
+                    | Some top5Words when top5Words |> Array.isEmpty |> not ->
+                        let wordsFormatted =
+                            top5Words
+                            |> Array.mapi (fun i wordCount -> $"{i + 1}: {wordCount.Word} - {wordCount.Count}")
+                            |> String.concat "\n"
 
-                    let message = $"The top 5 words for <@{user.Id}> are: \n"
-                    let wordsFormatted = String.concat "\n" top5WordsStringFormat
-                    return message + wordsFormatted
+                        $"The top 5 words for <@{user.Id}> are: \n{wordsFormatted}"
+                    | _ -> "No words found for the user."
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GetWordCount for user: {User}.", user.Username)
                 return "An error occurred while processing your request."
@@ -122,13 +137,11 @@ let allTimeLeaderboardCommand (ctx : Context) (gatewayClient : GatewayClient) =
         task {
             try
                 ctx.Logger.LogInformation ("Got alltimeleaderboard command request")
-
                 let filter = Builders<GodmorgenStats>.Filter.Empty
-                let! godmorgenStats = MongoDb.Functions.getGodmorgenStats filter ctx.MongoDataBase
+                let! godmorgenStatsO = MongoDb.Functions.getGodmorgenStats filter ctx.MongoDataBase
 
-                if Array.isEmpty godmorgenStats then
-                    return "No one has said godmorgen yet."
-                else
+                match godmorgenStatsO with
+                | Some godmorgenStats ->
                     let monthlyLeaderboard = Leaderboard.getMonthlyLeaderboard godmorgenStats
                     let overallRankings = Leaderboard.getOverallRankings godmorgenStats
 
@@ -142,10 +155,13 @@ let allTimeLeaderboardCommand (ctx : Context) (gatewayClient : GatewayClient) =
                         )
 
                     for monthlyMessage in monthlyMessages do
-                        let! _ = gatewayClient.Rest.SendMessageAsync(ctx.DiscordChannelInfo.ChannelId, monthlyMessage)
+                        let! _ =
+                            gatewayClient.Rest.SendMessageAsync (ctx.DiscordChannelInfo.ChannelId, monthlyMessage)
+
                         ()
 
                     return $"Overall Ranking:\n{overallRankings}"
+                | None -> return "No one has said godmorgen yet."
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GetAllTimeLeaderboard.")
                 return "An error occurred while processing your request."

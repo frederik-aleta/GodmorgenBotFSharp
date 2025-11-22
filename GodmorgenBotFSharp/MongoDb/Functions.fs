@@ -1,8 +1,8 @@
 module GodmorgenBotFSharp.MongoDb.Functions
 
 open System
-open System.Linq.Expressions
 open System.Threading.Tasks
+open GodmorgenBotFSharp
 open GodmorgenBotFSharp.MongoDb.Types
 open MongoDB.Driver
 open FsToolkit.ErrorHandling
@@ -21,17 +21,18 @@ let create (connectionString : string) : IMongoDatabase =
 let getGodmorgenStats (filter : FilterDefinition<GodmorgenStats>) (mongoDatabase : IMongoDatabase) =
     task {
         let collection = mongoDatabase.GetCollection<GodmorgenStats> godmorgenStatsCollectionName
-        let! results = collection.Find(filter).ToListAsync ()
-        return results |> Seq.toArray
+        let! results = collection.Find(filter).ToListAsync () |> Task.map Option.ofNull
+        return results |> Option.map Seq.toArray
     }
 
 let giveUserPoint (user : NetCord.User) (mongoDatabase : IMongoDatabase) =
     task {
         let collection = mongoDatabase.GetCollection<GodmorgenStats> godmorgenStatsCollectionName
         let mongoId = GodmorgenStats.createMongoId user.Id DateTime.Today
-        let! mongoUser = collection.Find(fun x -> x.Id = mongoId).FirstOrDefaultAsync ()
+        let! mongoUserO = collection.Find(fun x -> x.Id = mongoId).FirstOrDefaultAsync () |> Task.map Option.ofNull
 
-        if box mongoUser = null then
+        match mongoUserO with
+        | None ->
             let newUser = GodmorgenStats.create user.Id user.Username
             do! collection.InsertOneAsync newUser
 
@@ -39,30 +40,31 @@ let giveUserPoint (user : NetCord.User) (mongoDatabase : IMongoDatabase) =
                 Previous = 0
                 Current = 1
             |}
-        else
-            let updatedUser = GodmorgenStats.increaseGodmorgenCount mongoUser
+        | Some value ->
+            let updatedUser = GodmorgenStats.increaseGodmorgenCount value
             let! _ = collection.ReplaceOneAsync ((fun x -> x.Id = mongoId), updatedUser)
 
             return {|
-                Previous = mongoUser.GodmorgenCount
+                Previous = value.GodmorgenCount
                 Current = updatedUser.GodmorgenCount
             |}
     }
 
 let updateWordCount (user : NetCord.User) (gWord : string) (mWord : string) (mongoDatabase : IMongoDatabase) =
-    task {
+    taskResult {
+        do! Validation.validateWord gWord 'g'
+        do! Validation.validateWord mWord 'm'
+
         let collection = mongoDatabase.GetCollection<WordCount> $"word_count_{user.Id}"
 
         let upsertWord word =
-            task {
-                let filter = Builders<WordCount>.Filter.Eq ((fun x -> x.Word), word)
-                let update = Builders<WordCount>.Update.Inc ((fun x -> x.Count), 1)
-                let options = FindOneAndUpdateOptions<WordCount> ()
-                options.IsUpsert <- true
-                do! collection.FindOneAndUpdateAsync (filter, update, options) :> Task
-            }
+            let filter = Builders<WordCount>.Filter.Eq (_.Word, word)
+            let update = Builders<WordCount>.Update.Inc (_.Count, 1)
+            let options = FindOneAndUpdateOptions<WordCount> ()
+            options.IsUpsert <- true
+            collection.FindOneAndUpdateAsync (filter, update, options)
 
-        let! _ = Task.WhenAll ([| upsertWord gWord ; upsertWord mWord |])
+        let! _ = Task.WhenAll [| upsertWord gWord ; upsertWord mWord |]
         return ()
     }
 
@@ -73,32 +75,51 @@ let getHereticUserIds (mongoDatabase : IMongoDatabase) =
         let currentMonth = today.Month
         let currentYear = today.Year
 
-        let! messages = collection.Find(fun msg -> msg.Month = currentMonth && msg.Year = currentYear).ToListAsync ()
+        let! messagesO =
+            collection.Find(fun msg -> msg.Month = currentMonth && msg.Year = currentYear).ToListAsync ()
+            |> Task.map Option.ofNull
 
         return
-            messages
-            |> Seq.filter (fun x -> x.LastGoodmorgenDate < DateTimeOffset today)
-            |> Seq.map _.DiscordUserId
-            |> Seq.distinct
-            |> Array.ofSeq
+            messagesO
+            |> Option.map (fun messages ->
+                messages
+                |> Seq.filter (fun x -> x.LastGoodmorgenDate.Date < today)
+                |> Seq.map _.DiscordUserId
+                |> Seq.distinct
+                |> Array.ofSeq
+            )
     }
 
 let getWordCount (user : NetCord.User) (gWord : string) (mWord : string) (mongoDatabase : IMongoDatabase) =
-    task {
+    taskResult {
+        do! Validation.validateWord gWord 'g'
+        do! Validation.validateWord mWord 'm'
+
         let collection = mongoDatabase.GetCollection<WordCount> $"word_count_{user.Id}"
-        let filter = Builders<WordCount>.Filter.In ((fun x -> x.Word), [| gWord ; mWord |])
-        let! results = collection.Find(filter).ToListAsync ()
-        let counts = results |> Seq.map (fun x -> x.Word, x.Count) |> Map.ofSeq
+        let filter = Builders<WordCount>.Filter.In (_.Word, [| gWord ; mWord |])
+
+        let! wordCounts = collection.Find(filter).ToListAsync () |> Task.map Option.ofNull
+
+        let counts =
+            wordCounts
+            |> Option.map Seq.toArray
+            |> Option.defaultValue Array.empty
+            |> Array.map (fun x -> x.Word, x.Count)
+            |> Map.ofArray
 
         return {|
-            gWordCount = counts[gWord]
-            mWordCount = counts[mWord]
+            gWordCount = counts |> Map.tryFind gWord |> Option.defaultValue 0
+            mWordCount = counts |> Map.tryFind mWord |> Option.defaultValue 0
         |}
     }
 
 let getTop5Words (user : NetCord.User) (mongoDatabase : IMongoDatabase) =
     task {
         let collection = mongoDatabase.GetCollection<WordCount> $"word_count_{user.Id}"
-        let! results = collection.Find(fun _ -> true).SortByDescending(fun x -> x.Count).Limit(5).ToListAsync ()
-        return results |> Seq.toArray
+
+        let! results =
+            collection.Find(fun _ -> true).SortByDescending(fun x -> x.Count).Limit(5).ToListAsync ()
+            |> Task.map Option.ofNull
+
+        return results |> Option.map Seq.toArray
     }

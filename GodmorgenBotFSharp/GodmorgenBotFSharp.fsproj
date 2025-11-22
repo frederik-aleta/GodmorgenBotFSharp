@@ -8,6 +8,7 @@
     <ItemGroup>
         <Compile Include="Constants.fs" />
         <Compile Include="Context.fs" />
+        <Compile Include="Validation.fs" />
         <Compile Include="MongoDb\Types.fs" />
         <Compile Include="MongoDb\Functions.fs" />
         <Compile Include="Leaderboard.fs" />
