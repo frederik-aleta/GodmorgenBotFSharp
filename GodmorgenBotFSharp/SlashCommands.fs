@@ -45,14 +45,16 @@ let wordCountCommand (ctx : Context) =
             try
                 ctx.Logger.LogInformation ("Got wordcount command request for {User}", user.Username)
 
-                let! wordCountsO = ctx.MongoDataBase |> MongoDb.Functions.getWordCount user gWord mWord
+                let! wordCountsR = ctx.MongoDataBase |> MongoDb.Functions.getWordCount user gWord mWord
 
                 return
-                    match wordCountsO with
-                    | None -> $"No word counts found for user <@{user.Id}>."
-                    | Some wordCounts ->
+                    match wordCountsR with
+                    | Ok wordCounts ->
                         $"The user <@{user.Id}> has used the word {gWord} {wordCounts.gWordCount} times "
                         + $"and the word {mWord} {wordCounts.mWordCount} times."
+                    | Error errorValue ->
+                        ctx.Logger.LogError("Failed to get word count for user {User} with error: {Error}", user.Username, errorValue)
+                        errorValue
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GetWordCount for user {User}.", user.Username)
                 return "An error occurred while processing your request."

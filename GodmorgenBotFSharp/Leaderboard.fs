@@ -20,7 +20,7 @@ let private getTrophyEmoji (rank : int) : string =
     | 3 -> ":third_place:"
     | _ -> ":poop:"
 
-let private abbreviatedMonthName (month : int) : string =
+let abbreviatedMonthName (month : int) : string =
     Globalization.DateTimeFormatInfo.CurrentInfo.GetAbbreviatedMonthName (month)
 
 let getOverallRankings (godmorgenStats : GodmorgenStats array) : string =
