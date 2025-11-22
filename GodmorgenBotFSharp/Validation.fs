@@ -20,9 +20,10 @@ let isValidGodmorgenMessage (message : string) =
     | _ -> false
 
 let validateWord (word : string) (expectedFirstChar : char) =
+    let trimmed = word.Trim().ToLowerInvariant()
     if (String.IsNullOrWhiteSpace word) then
         Error $"Invalid word format. Expected word starting with '{expectedFirstChar}' empty string."
-    else if word[0] <> expectedFirstChar then
-        Error $"Invalid word format. Expected word starting with '{expectedFirstChar}' but got '{word[0]}'."
+    else if trimmed[0] <> expectedFirstChar then
+        Error $"Invalid word format. Expected word starting with '{expectedFirstChar}' but got '{trimmed[0]}'."
     else
         Ok ()

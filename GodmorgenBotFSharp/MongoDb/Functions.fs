@@ -52,13 +52,17 @@ let giveUserPoint (user : NetCord.User) (mongoDatabase : IMongoDatabase) =
 
 let updateWordCount (user : NetCord.User) (gWord : string) (mWord : string) (mongoDatabase : IMongoDatabase) =
     taskResult {
-        do! Validation.validateWord gWord 'g'
-        do! Validation.validateWord mWord 'm'
+        let gWordLower = gWord.ToLowerInvariant()
+        let mWordLower = mWord.ToLowerInvariant()
+
+        do! Validation.validateWord gWordLower 'g'
+        do! Validation.validateWord mWordLower 'm'
 
         let collection = mongoDatabase.GetCollection<WordCount> $"word_count_{user.Id}"
 
-        let upsertWord word =
-            let filter = Builders<WordCount>.Filter.Eq (_.Word, word)
+        let upsertWord (word : string) =
+            let trimmedWord = word.Trim().ToLowerInvariant ()
+            let filter = Builders<WordCount>.Filter.Eq (_.Word, trimmedWord)
             let update = Builders<WordCount>.Update.Inc (_.Count, 1)
             let options = FindOneAndUpdateOptions<WordCount> ()
             options.IsUpsert <- true
@@ -92,11 +96,14 @@ let getHereticUserIds (mongoDatabase : IMongoDatabase) =
 
 let getWordCount (user : NetCord.User) (gWord : string) (mWord : string) (mongoDatabase : IMongoDatabase) =
     taskResult {
-        do! Validation.validateWord gWord 'g'
-        do! Validation.validateWord mWord 'm'
+        let gWordLower = gWord.ToLowerInvariant()
+        let mWordLower = mWord.ToLowerInvariant()
+
+        do! Validation.validateWord gWordLower 'g'
+        do! Validation.validateWord mWordLower 'm'
 
         let collection = mongoDatabase.GetCollection<WordCount> $"word_count_{user.Id}"
-        let filter = Builders<WordCount>.Filter.In (_.Word, [| gWord ; mWord |])
+        let filter = Builders<WordCount>.Filter.In (_.Word, [| gWordLower; mWordLower |])
 
         let! wordCounts = collection.Find(filter).ToListAsync () |> Task.map Option.ofNull
 
@@ -104,12 +111,12 @@ let getWordCount (user : NetCord.User) (gWord : string) (mWord : string) (mongoD
             wordCounts
             |> Option.map Seq.toArray
             |> Option.defaultValue Array.empty
-            |> Array.map (fun x -> x.Word, x.Count)
+            |> Array.map (fun x -> x.Word.ToLowerInvariant(), x.Count)
             |> Map.ofArray
 
         return {|
-            gWordCount = counts |> Map.tryFind gWord |> Option.defaultValue 0
-            mWordCount = counts |> Map.tryFind mWord |> Option.defaultValue 0
+            gWordCount = counts |> Map.tryFind gWordLower |> Option.defaultValue 0
+            mWordCount = counts |> Map.tryFind mWordLower |> Option.defaultValue 0
         |}
     }
 
@@ -118,8 +125,7 @@ let getTop5Words (user : NetCord.User) (mongoDatabase : IMongoDatabase) =
         let collection = mongoDatabase.GetCollection<WordCount> $"word_count_{user.Id}"
 
         let! results =
-            collection.Find(fun _ -> true).SortByDescending(_.Count).Limit(5).ToListAsync ()
-            |> Task.map Option.ofNull
+            collection.Find(fun _ -> true).SortByDescending(_.Count).Limit(5).ToListAsync () |> Task.map Option.ofNull
 
         return results |> Option.map Seq.toArray
     }
