@@ -68,7 +68,7 @@ let wordCountCommand (ctx : Context) =
         }
     )
 
-type GiveUserPointWithWordsDelegate = delegate of ApplicationCommandContext * user : NetCord.User * gWord : string * mWord : string -> Task<string>
+type GiveUserPointWithWordsDelegate = delegate of commandContext : ApplicationCommandContext * user : NetCord.User * gWord : string * mWord : string -> Task<string>
 
 let giveUserPointWithWordsCommand (ctx : Context) =
     GiveUserPointWithWordsDelegate (fun commandContext user gWord mWord ->
@@ -101,15 +101,15 @@ let giveUserPointWithWordsCommand (ctx : Context) =
         }
     )
 
-type GiveUserPointDelegate = delegate of NetCord.User -> Task<string>
+type GiveUserPointDelegate = delegate of commandContext : ApplicationCommandContext * NetCord.User -> Task<string>
 
 let giveUserPointCommand (ctx : Context) =
-    GiveUserPointDelegate (fun user ->
+    GiveUserPointDelegate (fun commandContext user ->
         task {
             ctx.Logger.LogInformation ("Got giveuserpoint command request for {User}", user.Username)
 
             try
-                if user.Id <> Constants.PuffyDiscordUserId then
+                if commandContext.User.Id <> Constants.PuffyDiscordUserId then
                     return "You are not allowed to use this command, Heretic!"
                 else
                     let! result = ctx.MongoDataBase |> MongoDb.Functions.giveUserPoint user
