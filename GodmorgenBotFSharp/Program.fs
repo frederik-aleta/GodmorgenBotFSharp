@@ -1,4 +1,5 @@
-﻿open GodmorgenBotFSharp
+﻿open System.Threading.Tasks
+open GodmorgenBotFSharp
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
@@ -21,7 +22,16 @@ let createContext (config : IConfiguration) (loggerFactory : ILoggerFactory) =
 
 let configureServices (hostBuilderContext : HostBuilderContext) (serviceCollection : IServiceCollection) =
     serviceCollection.AddLogging () |> ignore
-    serviceCollection.AddDiscordGateway () |> ignore
+    serviceCollection.AddDiscordGateway (fun options ->
+        options.Intents <-
+            GatewayIntents.GuildMessages
+            ||| GatewayIntents.DirectMessages
+            ||| GatewayIntents.MessageContent
+            ||| GatewayIntents.DirectMessageReactions
+            ||| GatewayIntents.GuildMessageReactions
+    )
+    |> ignore
+
     serviceCollection.AddApplicationCommands () |> ignore
 
     serviceCollection.AddHostedService<BackgroundJob.HereticBackgroundJob> (fun x ->
@@ -78,8 +88,7 @@ host.AddSlashCommand (
     "giveuserpointwithwords",
     "This command gives a user a point, if Træmand deems they deserve it.",
     SlashCommands.giveUserPointWithWordsCommand ctx
-)
-|> ignore
+) |> ignore
 
 host.AddSlashCommand ("topwords", "This command shows top 5 words for a given user", SlashCommands.topWordsCommand ctx)
 |> ignore

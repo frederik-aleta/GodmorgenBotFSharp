@@ -8,20 +8,18 @@ open FsToolkit.ErrorHandling
 
 let messageCreate (ctx : Context) (message : Message) : ValueTask =
     task {
-        if message.Author.IsBot then
-            return ()
+        let isValidGodmorgenMessage = Validation.isValidGodmorgenMessage message.Content
+        let isWeekend = Validation.isWeekend DateTime.UtcNow
+        let isWithinGodmorgenHours = Validation.isWithinGodmorgenHours DateTime.UtcNow
+
+        if message.Author.IsBot || isWeekend then
+            ()
+        else if not isValidGodmorgenMessage || not isWithinGodmorgenHours then
+            ()
         else
-            let isValidGodmorgenMessage = Validation.isValidGodmorgenMessage message.Content
-            let isWeekend = Validation.isWeekend DateTime.UtcNow
-            let isWithinGodmorgenHours = Validation.isWithinGodmorgenHours DateTime.UtcNow
-
-            if isWeekend then
-                ()
-            else if isValidGodmorgenMessage && isWithinGodmorgenHours then
-                let words = message.Content.Trim().ToLowerInvariant().Split ' '
-                let gWord = words[0]
-                let mWord = words[1]
-
+            let words = message.Content.Trim().ToLowerInvariant().Split ' '
+            match words with
+            | [| gWord ; mWord |] ->
                 let userFilter = Builders<MongoDb.Types.GodmorgenStats>.Filter.Eq (_.DiscordUserId, message.Author.Id)
                 let! godmorgenStatsO = ctx.MongoDataBase |> MongoDb.Functions.getGodmorgenStats userFilter
 
@@ -35,5 +33,6 @@ let messageCreate (ctx : Context) (message : Message) : ValueTask =
                         message.ReplyAsync $"Godmorgen <@{message.Author.Id}>, you little bitch! :blush:" |> ignore
                     else
                         message.ReplyAsync $"Godmorgen <@{message.Author.Id}>! :sun_with_face:" |> ignore
+            | _ -> ()
     }
     |> ValueTask

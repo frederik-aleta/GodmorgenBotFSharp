@@ -6,6 +6,8 @@ open GodmorgenBotFSharp.MongoDb.Types
 open MongoDB.Driver
 open Microsoft.Extensions.Logging
 open NetCord.Gateway
+open NetCord.Rest
+open NetCord.Services.ApplicationCommands
 
 type LeaderboardDelegate = delegate of unit -> Task<string>
 
@@ -53,7 +55,12 @@ let wordCountCommand (ctx : Context) =
                         $"The user <@{user.Id}> has used the word {gWord} {wordCounts.gWordCount} times "
                         + $"and the word {mWord} {wordCounts.mWordCount} times."
                     | Error errorValue ->
-                        ctx.Logger.LogError("Failed to get word count for user {User} with error: {Error}", user.Username, errorValue)
+                        ctx.Logger.LogError (
+                            "Failed to get word count for user {User} with error: {Error}",
+                            user.Username,
+                            errorValue
+                        )
+
                         errorValue
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GetWordCount for user {User}.", user.Username)
@@ -61,14 +68,15 @@ let wordCountCommand (ctx : Context) =
         }
     )
 
-type GiveUserPointWithWordsDelegate = delegate of NetCord.User * gWord : string * mWord : string -> Task<string>
+type GiveUserPointWithWordsDelegate = delegate of ApplicationCommandContext * user : NetCord.User * gWord : string * mWord : string -> Task<string>
 
 let giveUserPointWithWordsCommand (ctx : Context) =
-    GiveUserPointWithWordsDelegate (fun user gWord mWord ->
+    GiveUserPointWithWordsDelegate (fun commandContext user gWord mWord ->
         task {
-            ctx.Logger.LogInformation("Got giveuserpointwithwords command request for {User}", user.Username)
+            ctx.Logger.LogInformation ("Got giveuserpointwithwords command request for {User}", user.Username)
+
             try
-                if user.Id <> Constants.PuffyDiscordUserId then
+                if commandContext.User.Id <> Constants.PuffyDiscordUserId then
                     return "You are not allowed to use this command, Heretic!"
                 else
                     let! giveUserPointResult = ctx.MongoDataBase |> MongoDb.Functions.giveUserPoint user
@@ -76,10 +84,16 @@ let giveUserPointWithWordsCommand (ctx : Context) =
 
                     match updateWordCountR with
                     | Ok _ ->
-                        return $"User <@{user.Id}> has been given a point from {giveUserPointResult.Previous} to {giveUserPointResult.Current} points!, "
-                        + $"and added words: G-word: {gWord}, M-word: {mWord}"
+                        return
+                            $"User <@{user.Id}> has been given a point from {giveUserPointResult.Previous} to {giveUserPointResult.Current} points!, "
+                            + $"and added words: G-word: {gWord}, M-word: {mWord}"
                     | Error errorValue ->
-                        ctx.Logger.LogError("Failed to update word count for user {User} with error: {Error}", user.Username, errorValue)
+                        ctx.Logger.LogError (
+                            "Failed to update word count for user {User} with error: {Error}",
+                            user.Username,
+                            errorValue
+                        )
+
                         return errorValue
             with ex ->
                 ctx.Logger.LogError (ex, "Error in GiveUserPointWithWords for user {User}.", user.Username)
@@ -92,7 +106,8 @@ type GiveUserPointDelegate = delegate of NetCord.User -> Task<string>
 let giveUserPointCommand (ctx : Context) =
     GiveUserPointDelegate (fun user ->
         task {
-            ctx.Logger.LogInformation("Got giveuserpoint command request for {User}", user.Username)
+            ctx.Logger.LogInformation ("Got giveuserpoint command request for {User}", user.Username)
+
             try
                 if user.Id <> Constants.PuffyDiscordUserId then
                     return "You are not allowed to use this command, Heretic!"
@@ -157,8 +172,7 @@ let allTimeLeaderboardCommand (ctx : Context) (gatewayClient : GatewayClient) =
                         )
 
                     for monthlyMessage in monthlyMessages do
-                        let! _ =
-                            gatewayClient.Rest.SendMessageAsync (ctx.DiscordChannelInfo.ChannelId, monthlyMessage)
+                        let! _ = gatewayClient.Rest.SendMessageAsync (ctx.DiscordChannelInfo.ChannelId, monthlyMessage)
 
                         ()
 
